@@ -1,0 +1,42 @@
+{
+  "project_info": {
+    "project_number": "297395664410",
+    "firebase_url": "https://recommendationsystem-ba351.firebaseio.com",
+    "project_id": "recommendationsystem-ba351",
+    "storage_bucket": "recommendationsystem-ba351.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:297395664410:android:86629c2748fcbbb6",
+        "android_client_info": {
+          "package_name": "com.example.xxfin.recommendationsystemtesina"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "297395664410-fvap51lmg77206f7vdroj8gavfp06bdh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBa5gqUMBNazibcH8OjZGg8t94tosNYl0M"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
