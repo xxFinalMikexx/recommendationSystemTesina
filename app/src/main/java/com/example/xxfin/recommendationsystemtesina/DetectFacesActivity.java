@@ -132,6 +132,7 @@ public class DetectFacesActivity extends AppCompatActivity {
     public StorageReference downloadUrl;
     private Bitmap photo;
     private ByteArrayOutputStream bytes;
+    public TextView photoPath;
 
     /*Variables para HTTPs request*/
     private static final String TARGET_URL = "https://vision.googleapis.com/v1/images:annotate?";
@@ -148,6 +149,8 @@ public class DetectFacesActivity extends AppCompatActivity {
         user = mAuth.getCurrentUser();
         storage = FirebaseStorage.getInstance();
         mStorageRef = FirebaseStorage.getInstance().getReference();
+
+        this.photoPath = (TextView)findViewById(R.id.result);
 
         fotoPrueba();
     }
@@ -173,9 +176,10 @@ public class DetectFacesActivity extends AppCompatActivity {
                 this.photo = BitmapFactory.decodeStream(imageStream);
 
                 /*Carga la foto al Storage de Firebase*/
-                encodeBitmapAndSaveToFirebase(this.photo, this.rutaImagen);
+                //encodeBitmapAndSaveToFirebase(this.photo, this.rutaImagen);
 
                 /*Envia request a Google Vision*/
+                Toast.makeText(DetectFacesActivity.this, "Enviando request...", Toast.LENGTH_LONG).show();
                 new UploadFileTask().execute();
             } catch(Exception e) {
                 Toast.makeText(this, "File not found", Toast.LENGTH_SHORT).show();
@@ -184,7 +188,7 @@ public class DetectFacesActivity extends AppCompatActivity {
     }
 
     private void processValue(String result) {
-        TextView photoPath = (TextView)findViewById(R.id.result);
+        Toast.makeText(DetectFacesActivity.this, result, Toast.LENGTH_LONG).show();
         photoPath.setText(result);
     }
 
@@ -318,9 +322,10 @@ public class DetectFacesActivity extends AppCompatActivity {
     private class UploadFileTask extends AsyncTask<LinkedList, Integer, String> {
         protected String doInBackground(LinkedList... values) {
             try {
-                StorageReference downloadUrl;
-                LinkedList auxValues = (LinkedList) values[0];
-                downloadUrl = (StorageReference) auxValues.get(0);
+                //StorageReference downloadUrl;
+                //LinkedList auxValues = (LinkedList) values[0];
+                //downloadUrl = (StorageReference) auxValues.get(0);
+                //StorageReference downloadURL = "gs://recommendationsystem-ba351.appspot.com/images/20170418_135602.jpg";
 
                 URL serverUrl = new URL(TARGET_URL + API_KEY_VISION);
                 URLConnection urlConnection = serverUrl.openConnection();
@@ -336,10 +341,10 @@ public class DetectFacesActivity extends AppCompatActivity {
                 httpRequestBodyWriter.write
                         ("{\"requests\":  [{ \"features\":  [ {\"type\": \"FACE_DETECTION\""
                                 + "}], \"image\": {\"source\": { \"gcsImageUri\":"
-                                + downloadUrl.toString() + "}}}]}");
+                                + "\"gs://recommendationsystem-ba351.appspot.com/images/20170418_135602.jpg\"" + "}}}]}");
                 String request = "{\"requests\":  [{ \"features\":  [ {\"type\": \"FACE_DETECTION\""
                         + "}], \"image\": {\"source\": { \"gcsImageUri\":"
-                        + downloadUrl.toString() + "}}}]}";
+                        + "\"gs://recommendationsystem-ba351.appspot.com/images/20170418_135602.jpg\"" + "}}}]}";
 
                 httpRequestBodyWriter.close();
 
@@ -361,7 +366,7 @@ public class DetectFacesActivity extends AppCompatActivity {
 
                 return resp;
             } catch (Exception e) {
-                String request = e.getMessage();
+                String request = "Error al enviar HTTP: "+e.getLocalizedMessage();
                 return request;
             }
         }
