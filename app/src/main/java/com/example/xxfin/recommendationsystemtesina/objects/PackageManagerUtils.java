@@ -5,7 +5,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.Signature;
 import android.support.annotation.NonNull;
 
-import com.google.common.io.BaseEncoding;
+//import com.google.common.io.BaseEncoding;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -42,7 +42,8 @@ public class PackageManagerUtils {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA1");
             byte[] digest = md.digest(signature);
-            return BaseEncoding.base16().lowerCase().encode(digest);
+            //return BaseEncoding.base16().lowerCase().encode(digest);
+            return "Signature";
         } catch (NoSuchAlgorithmException e) {
             return null;
         }

@@ -29,41 +29,49 @@ import android.widget.Toast;
 
 import com.example.xxfin.recommendationsystemtesina.objects.*;
 
-import com.google.android.gms.auth.GoogleAuthUtil;
-import com.google.android.gms.common.AccountPicker;
+/*import com.google.android.gms.auth.GoogleAuthUtil;
+import com.google.android.gms.common.AccountPicker;*/
 
 import com.google.api.client.extensions.android.http.AndroidHttp;
-import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
+//import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.gson.GsonFactory;
-import com.google.api.services.vision.v1.Vision;
+/*import com.google.api.services.vision.v1.Vision;
 import com.google.api.services.vision.v1.model.AnnotateImageRequest;
 import com.google.api.services.vision.v1.model.BatchAnnotateImagesRequest;
 import com.google.api.services.vision.v1.model.BatchAnnotateImagesResponse;
 import com.google.api.services.vision.v1.model.EntityAnnotation;
 import com.google.api.services.vision.v1.model.Feature;
-import com.google.api.services.vision.v1.model.Image;
+import com.google.api.services.vision.v1.model.Image;*/
 
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Scanner;
 
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
+
+/*Firebase imports*/
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
+
+import org.w3c.dom.Text;
 
 //import com.google.android.gms.appdatasearch.GetRecentContextCall;
 
@@ -74,9 +82,6 @@ public class DetectFacesActivity extends AppCompatActivity {
     private static final String API_KEY = "AIzaSyALTyezzge7Tz1HdQMfBrUyfkJMWdk_RCE";
     private static final String CLOUD_VISION_API_KEY = "AIzaSyCjh4AsNOB4sUyK_L46pXkYAajd832u96w";
     private static final String LOG_TAG = "DetectFaces Activity";
-
-    private static final String ANDROID_PACKAGE_HEADER = "X-Android-Package";
-    private static final String ANDROID_CERT_HEADER = "X-Android-Cert";
 
     private static String accessToken;
     static final int REQUEST_GALLERY_IMAGE = 10;
@@ -122,12 +127,15 @@ public class DetectFacesActivity extends AppCompatActivity {
     private FirebaseAuth mAuth;
     private FirebaseAuth.AuthStateListener mAuthListener;
     private FirebaseUser user;
-    private DatabaseReference mFirebaseDatabaseReference;
     private StorageReference mStorageRef;
     private FirebaseStorage storage;
-    public Uri downloadUrl;
+    public StorageReference downloadUrl;
     private Bitmap photo;
     private ByteArrayOutputStream bytes;
+
+    /*Variables para HTTPs request*/
+    private static final String TARGET_URL = "https://vision.googleapis.com/v1/images:annotate?";
+    private static final String API_KEY_VISION = "key=AIzaSyCAxKbsPqfcZMPrJpcKD0nGvkqC_WDtAgI";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -137,10 +145,11 @@ public class DetectFacesActivity extends AppCompatActivity {
         checkPermissions();
 
         mAuth = FirebaseAuth.getInstance();
-        mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
+        user = mAuth.getCurrentUser();
         storage = FirebaseStorage.getInstance();
         mStorageRef = FirebaseStorage.getInstance().getReference();
-        user = mAuth.getCurrentUser();
+
+        fotoPrueba();
     }
 
     public void fotoPrueba() {
@@ -150,41 +159,47 @@ public class DetectFacesActivity extends AppCompatActivity {
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        ImageView imageView = (ImageView)findViewById(R.id.previewImage);
         bytes = new ByteArrayOutputStream();
 
         if (requestCode == GALLERY_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
             try {
                 Uri selectedImage = data.getData();
+
+                /*Ruta de la imagen para usar como referencia para storage*/
+                this.rutaImagen = obtenerRutaRealUri(selectedImage);
+
+                /*Bitmap de la imagen seleccionada*/
                 InputStream imageStream = getContentResolver().openInputStream(selectedImage);
                 this.photo = BitmapFactory.decodeStream(imageStream);
 
-                imageView.setImageBitmap(this.photo);
+                /*Carga la foto al Storage de Firebase*/
+                encodeBitmapAndSaveToFirebase(this.photo, this.rutaImagen);
+
+                /*Envia request a Google Vision*/
+                new UploadFileTask().execute();
             } catch(Exception e) {
                 Toast.makeText(this, "File not found", Toast.LENGTH_SHORT).show();
             }
         }
     }
 
-    public void uploadProduct(View v) {
-        DatabaseReference products = mFirebaseDatabaseReference.child("Products");
-        String key = mFirebaseDatabaseReference.child("Products").push().getKey();
-
-        try {
-            encodeBitmapAndSaveToFirebase(photo, key);
-        } catch (Exception e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+    private void processValue(String result) {
+        TextView photoPath = (TextView)findViewById(R.id.result);
+        photoPath.setText(result);
     }
 
     public void encodeBitmapAndSaveToFirebase(Bitmap bitmap, final String key) {
+        /*Reference to Storage*/
         StorageReference storageRef = storage.getReferenceFromUrl("gs://recommendationsystem-ba351.appspot.com");
-        StorageReference mountainsRef = storageRef.child("images/" + key + ".jpg");
+        /*Create reference for the image to upload*/
+        String keyImage[] = key.split("/");
+        StorageReference mountainsRef = storageRef.child("images/" + keyImage[keyImage.length - 1]);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         bitmap.compress(Bitmap.CompressFormat.JPEG, 50, baos);
         byte[] data = baos.toByteArray();
 
+        /*Carga la imagen a Firebase y guarda la url para ser usada*/
         UploadTask uploadTask = mountainsRef.putBytes(data);
         uploadTask.addOnFailureListener(new OnFailureListener() {
             @Override
@@ -194,9 +209,10 @@ public class DetectFacesActivity extends AppCompatActivity {
         }).addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
             @Override
             public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
-                Toast.makeText(DetectFacesActivity.this, "Success on upload image", Toast.LENGTH_SHORT).show();
-                downloadUrl = taskSnapshot.getDownloadUrl();
-                //registerProduct(downloadUrl.toString(), key);
+                downloadUrl = taskSnapshot.getStorage();
+                Toast.makeText(DetectFacesActivity.this, "Imagen cargada: " + downloadUrl.getPath(), Toast.LENGTH_LONG).show();
+                TextView photoPath = (TextView)findViewById(R.id.result);
+                photoPath.setText(downloadUrl.toString());
             }
         });
     }
@@ -296,5 +312,67 @@ public class DetectFacesActivity extends AppCompatActivity {
         }
 
         return false;
+    }
+
+
+    private class UploadFileTask extends AsyncTask<LinkedList, Integer, String> {
+        protected String doInBackground(LinkedList... values) {
+            try {
+                StorageReference downloadUrl;
+                LinkedList auxValues = (LinkedList) values[0];
+                downloadUrl = (StorageReference) auxValues.get(0);
+
+                URL serverUrl = new URL(TARGET_URL + API_KEY_VISION);
+                URLConnection urlConnection = serverUrl.openConnection();
+                HttpURLConnection httpConnection = (HttpURLConnection) urlConnection;
+
+                httpConnection.setRequestMethod("POST");
+                httpConnection.setRequestProperty("Content-Type", "application/json");
+
+                httpConnection.setDoOutput(true);
+
+                BufferedWriter httpRequestBodyWriter = new BufferedWriter(new
+                        OutputStreamWriter(httpConnection.getOutputStream()));
+                httpRequestBodyWriter.write
+                        ("{\"requests\":  [{ \"features\":  [ {\"type\": \"FACE_DETECTION\""
+                                + "}], \"image\": {\"source\": { \"gcsImageUri\":"
+                                + downloadUrl.toString() + "}}}]}");
+                String request = "{\"requests\":  [{ \"features\":  [ {\"type\": \"FACE_DETECTION\""
+                        + "}], \"image\": {\"source\": { \"gcsImageUri\":"
+                        + downloadUrl.toString() + "}}}]}";
+
+                httpRequestBodyWriter.close();
+
+                String response = httpConnection.getResponseMessage();
+
+                if (httpConnection.getInputStream() == null) {
+                    System.out.println("No stream");
+                    return "Sin información...";
+                }
+
+                Scanner httpResponseScanner = new Scanner (httpConnection.getInputStream());
+                String resp = "";
+                while (httpResponseScanner.hasNext()) {
+                    String line = httpResponseScanner.nextLine();
+                    resp += line;
+                    //System.out.println(line);  //  alternatively, print the line of response
+                }
+                httpResponseScanner.close();
+
+                return resp;
+            } catch (Exception e) {
+                String request = e.getMessage();
+                return request;
+            }
+        }
+
+        protected void onProgressUpdate(Integer... progress) {
+            //setProgressPercent(progress[0]);
+        }
+
+        protected void onPostExecute(String result) {
+            //showDialog("Downloaded " + result + " bytes");
+            processValue(result);
+        }
     }
 }
