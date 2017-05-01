@@ -1,6 +1,8 @@
 package com.example.xxfin.recommendationsystemtesina.objects;
 
 //import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.LatLng;
+
 import org.json.JSONArray;
 import java.util.LinkedList;
 
@@ -11,7 +13,7 @@ import java.util.LinkedList;
 public class Place_Info {
     private CharSequence name;
     private String placeId;
-    //private LatLng latlng;
+    private LatLng latlng;
     private JSONArray placeTypes;
     private double rating;
     private LinkedList ratingList;
@@ -20,10 +22,10 @@ public class Place_Info {
 
     }
 
-    public Place_Info(CharSequence name, String placeId, JSONArray placeTypes, double rating, LinkedList ratingList) {
+    public Place_Info(CharSequence name, String placeId, LatLng latlng, JSONArray placeTypes, double rating, LinkedList ratingList) {
         this.name = name;
         this.placeId = placeId;
-        //this.latlng = latlng;
+        this.latlng = latlng;
         this.placeTypes = placeTypes;
         this.rating = rating;
         this.ratingList = ratingList;
@@ -55,14 +57,14 @@ public class Place_Info {
         this.placeTypes = placeTypes;
     }
 
-    /*public LatLng getLatlng() {
+    public LatLng getLatlng() {
 
         return latlng;
-    }*/
+    }
 
-    /*public void setLatlng(LatLng latlng) {
+    public void setLatlng(LatLng latlng) {
         this.latlng = latlng;
-    }*/
+    }
 
     public String getPlaceId() {
 
@@ -80,5 +82,9 @@ public class Place_Info {
 
     public void setName(CharSequence name) {
         this.name = name;
+    }
+
+    public String toString() {
+        return this.getName() + "\n" + this.getPlaceId() + "\n" + this.getRating();
     }
 }
