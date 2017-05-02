@@ -1,11 +1,11 @@
 package com.example.xxfin.recommendationsystemtesina;
 
-import android.*;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.ExifInterface;
@@ -111,7 +111,7 @@ public class PrincipalActivity extends AppCompatActivity {
     private HashMap correlationsFound = new HashMap();
 
     /*Constants for search*/
-    private static final int SEARCH_RADIOUS = 500; //Radio aproximado de búsqueda para Geocoder
+    private static final int SEARCH_RADIOUS = 50; //Radio aproximado de búsqueda para Geocoder
     private static final int NEARBY_RADIOUS = 10000; //Radio para buscar alrededor de la ciudad
     private static final String API_KEY = "AIzaSyALTyezzge7Tz1HdQMfBrUyfkJMWdk_RCE";
 
@@ -130,6 +130,7 @@ public class PrincipalActivity extends AppCompatActivity {
         };
 
         checkPermissions();
+
         getPhotoData();
     }
 
@@ -176,7 +177,7 @@ public class PrincipalActivity extends AppCompatActivity {
     }
 
     public void showResultsHistory() {
-
+        //TODO implement DB
     }
 
     public void getPlacesResult() {
@@ -192,10 +193,13 @@ public class PrincipalActivity extends AppCompatActivity {
         try {
             RequestQueue queue = Volley.newRequestQueue(this);
 
-            StringBuilder googlePlacesUrl = new StringBuilder("https://maps.google.com/maps/api/geocode/json?");
-            googlePlacesUrl.append("latlng=").append(latitud).append(",").append(longitud);
-            googlePlacesUrl.append("&radious=").append(SEARCH_RADIOUS);
+            StringBuilder googlePlacesUrl = new StringBuilder("https://maps.googleapis.com/maps/api/place/nearbysearch/json?");
+            googlePlacesUrl.append("location=").append(latitud).append(",").append(longitud);
+            googlePlacesUrl.append("&radius=").append(SEARCH_RADIOUS);
+            googlePlacesUrl.append("&types=").append("establishment");
             googlePlacesUrl.append("&key=").append(API_KEY);
+
+            Log.e("Query to place", googlePlacesUrl.toString());
 
             this.viewPlace = (TextView)findViewById(R.id.placeId);
             this.viewPlace.setText(googlePlacesUrl);
@@ -235,6 +239,8 @@ public class PrincipalActivity extends AppCompatActivity {
             JSONObject place = this.arrayPlaceId.getJSONObject(0);
             this.placeId = place.getString("place_id");
 
+            Log.e("Principal Place_id: ", this.placeId);
+
             obtenerInformacion(this.placeId);
         } catch(Exception e) {
             //Toast.makeText(PrincipalActivity.this, "Parsing PlaceId " + e.getMessage(),Toast.LENGTH_LONG).show();
@@ -243,12 +249,14 @@ public class PrincipalActivity extends AppCompatActivity {
     }
 
     public void obtenerInformacion(String placeId) {
+        Toast.makeText(PrincipalActivity.this, "Obteniendo información de Lugar", Toast.LENGTH_LONG).show();
         try {
             RequestQueue queue = Volley.newRequestQueue(this);
 
             StringBuilder googlePlacesUrl = new StringBuilder("https://maps.googleapis.com/maps/api/place/details/json?");
-            googlePlacesUrl.append("placeid=").append(latitud).append(",").append(longitud);
+            googlePlacesUrl.append("placeid=").append(this.placeId);
             googlePlacesUrl.append("&key=").append(API_KEY);
+            Log.e("Specific Place", googlePlacesUrl.toString());
 
             final JsonObjectRequest placeRequest = new JsonObjectRequest (
                     Request.Method.GET,
@@ -263,36 +271,40 @@ public class PrincipalActivity extends AppCompatActivity {
                     }, new Response.ErrorListener() {
                 @Override
                 public void onErrorResponse(VolleyError error) {
-                    Toast.makeText(PrincipalActivity.this, error.toString(), Toast.LENGTH_LONG).show();
+                    Log.e("Principal Activity", "Error place:"+error.toString());
                 }
             });
+            queue.stop();
             queue.add(placeRequest);
+            queue.start();
         } catch(Exception e) {
-            Log.e("Principal Activity", e.toString());
+            Log.e("Principal Activity", "Información insuficiente. Intente con otro lugar."+e.toString());
         }
     }
 
     public void parsePlaceInformation(JSONObject result) {
+        Toast.makeText(PrincipalActivity.this, "Parseando datos...",Toast.LENGTH_LONG).show();
         try {
-            JSONArray jsonArray = result.getJSONArray("result");
-            JSONObject place = jsonArray.getJSONObject(0);
+            JSONObject jsonObject = result.getJSONObject("result");
 
-            this.placeInfo.setName(place.getString("name"));
-            this.placeInfo.setPlaceId(place.getString("place_id"));
+            String nombre = jsonObject.getString("name");
+            this.placeInfo.setName(nombre);
 
-            JSONObject geometry = place.getJSONObject("geometry").getJSONObject("location");
-            LatLng coordinates = new LatLng(geometry.getDouble("latitude"), geometry.getDouble("longitude"));
+            this.placeInfo.setPlaceId(jsonObject.getString("place_id"));
+
+            JSONObject geometry = jsonObject.getJSONObject("geometry").getJSONObject("location");
+            LatLng coordinates = new LatLng(geometry.getDouble("lat"), geometry.getDouble("lng"));
             this.placeInfo.setLatlng(coordinates);
 
-            this.placeInfo.setPlaceTypes(place.getJSONArray("types"));
+            this.placeInfo.setPlaceTypes(jsonObject.getJSONArray("types"));
 
-            this.placeInfo.setRating(place.getDouble("rating"));
+            this.placeInfo.setRating(jsonObject.getDouble("rating"));
 
-            this.viewPlace = (TextView)findViewById(R.id.placeId);
-            this.viewPlace.setText(this.placeInfo.toString());
+            Log.e("Place_Info", this.placeInfo.toString());
 
             obtenerResultadosSimilares(this.placeId);
         } catch(Exception e) {
+            Toast.makeText(PrincipalActivity.this, "Error al parsear informacion del lugar\n"+e.getMessage(), Toast.LENGTH_LONG).show();
             Log.e("Principal Activity", e.toString());
         }
     }
@@ -303,9 +315,11 @@ public class PrincipalActivity extends AppCompatActivity {
             StringBuilder googlePlacesUrl = new StringBuilder("https://maps.googleapis.com/maps/api/place/nearbysearch/json?");
             //location=51.503186,-0.126446&radius=5000&types=hospital&key=AIzaSyALTyezzge7Tz1HdQMfBrUyfkJMWdk_RCE
             googlePlacesUrl.append("location=").append(latitud).append(",").append(longitud);
-            googlePlacesUrl.append("&radious=").append(NEARBY_RADIOUS);
+            googlePlacesUrl.append("&radius=").append(NEARBY_RADIOUS);
             googlePlacesUrl.append("&types=").append(this.placeInfo.getPlaceTypes().get(0));
             googlePlacesUrl.append("&key=").append(API_KEY);
+
+            Log.e("Nearby places", googlePlacesUrl.toString());
 
             final JsonObjectRequest detailsRequest = new JsonObjectRequest(
                     Request.Method.GET,
@@ -330,11 +344,10 @@ public class PrincipalActivity extends AppCompatActivity {
     }
 
     public void parseInformationDetail(JSONObject result) {
-        Toast.makeText(PrincipalActivity.this, "Parseando detalles...",Toast.LENGTH_LONG).show();
         this.viewPlace = (TextView)findViewById(R.id.placeId);
         try {
             JSONArray jsonArray = result.getJSONArray("results");
-            this.viewPlace.setText("Place_ID\n"+jsonArray.toString());
+
             for (int i = 1; i < jsonArray.length(); i++) {
                 Place_Info actualPlace = new Place_Info();
 
@@ -343,14 +356,17 @@ public class PrincipalActivity extends AppCompatActivity {
                 actualPlace.setPlaceTypes(place.getJSONArray("types"));
 
                 JSONObject geometry = place.getJSONObject("geometry").getJSONObject("location");
-                LatLng coordinates = new LatLng(geometry.getDouble("latitude"), geometry.getDouble("longitude"));
+                LatLng coordinates = new LatLng(geometry.getDouble("lat"), geometry.getDouble("lng"));
                 actualPlace.setLatlng(coordinates);
 
                 actualPlace.setPlaceId(place.getString("place_id"));
 
                 /*Get ratings of each place*/
-                actualPlace.setRatingList(getRatingsPlace(place.getJSONArray("reviews")));
-                actualPlace.setRating(place.getDouble("rating"));
+                try {
+                    actualPlace.setRating(place.getDouble("rating"));
+                } catch(Exception e) {
+                    actualPlace.setRating(2.5);
+                }
 
                 mapNearbyPlaces.put(place.getString("place_id"), actualPlace);
                 listNearbyPlaces.addLast(actualPlace);
@@ -358,7 +374,7 @@ public class PrincipalActivity extends AppCompatActivity {
             }
 
         } catch (Exception e) {
-            Toast.makeText(PrincipalActivity.this, "Error al obtener información de lugares cercanos", Toast.LENGTH_LONG).show();
+            Log.e("Error nearby", e.toString());
         }
     }
 

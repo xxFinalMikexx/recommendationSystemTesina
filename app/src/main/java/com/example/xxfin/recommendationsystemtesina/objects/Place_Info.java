@@ -17,19 +17,28 @@ public class Place_Info {
     private JSONArray placeTypes;
     private double rating;
     private LinkedList ratingList;
+    private String imageUrl;
 
     public Place_Info() {
 
     }
 
-    public Place_Info(CharSequence name, String placeId, LatLng latlng, JSONArray placeTypes, double rating, LinkedList ratingList) {
+    public Place_Info(CharSequence name, String placeId, LatLng latlng, JSONArray placeTypes, double rating, LinkedList ratingList, String imageUrl) {
         this.name = name;
         this.placeId = placeId;
         this.latlng = latlng;
         this.placeTypes = placeTypes;
         this.rating = rating;
         this.ratingList = ratingList;
+        this.imageUrl = imageUrl;
+    }
 
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
     }
 
     public LinkedList getRatingList() {
