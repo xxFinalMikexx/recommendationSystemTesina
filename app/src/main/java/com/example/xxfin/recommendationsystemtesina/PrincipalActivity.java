@@ -27,6 +27,7 @@ import com.android.volley.Request;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.example.xxfin.recommendationsystemtesina.objects.Place_Info;
+import com.google.android.gms.location.places.Place;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
@@ -109,6 +110,7 @@ public class PrincipalActivity extends AppCompatActivity {
     private HashMap mapEmotionsPlace = new HashMap();
     private LinkedList listEmotions = new LinkedList();
     private HashMap correlationsFound = new HashMap();
+    private LinkedList reviews = new LinkedList();
 
     /*Constants for search*/
     private static final int SEARCH_RADIOUS = 50; //Radio aproximado de búsqueda para Geocoder
@@ -373,22 +375,84 @@ public class PrincipalActivity extends AppCompatActivity {
                 Log.e("Principal Activity", actualPlace.toString());
             }
 
+            getPlaceReviews();
         } catch (Exception e) {
             Log.e("Error nearby", e.toString());
         }
     }
 
-    public LinkedList getRatingsPlace(JSONArray reviews) {
+    public void getPlaceReviews() {
+        for(int i = 0; i < listNearbyPlaces.size(); i++) {
+            Place_Info actualPlace = (Place_Info)listNearbyPlaces.get(i);
+            obtenerReviews(actualPlace.getPlaceId());
+        }
+    }
+
+    public void obtenerReviews(final String placeId) {
+        RequestQueue queue = Volley.newRequestQueue(this);
+        try {
+            StringBuilder googlePlacesUrl = new StringBuilder("https://maps.googleapis.com/maps/api/place/details/json?");
+            //location=51.503186,-0.126446&radius=5000&types=hospital&key=AIzaSyALTyezzge7Tz1HdQMfBrUyfkJMWdk_RCE
+            googlePlacesUrl.append("placeid=").append(placeId);
+            googlePlacesUrl.append("&key=").append(API_KEY);
+
+            Log.e("Reviews ", googlePlacesUrl.toString());
+
+            final JsonObjectRequest detailsRequest = new JsonObjectRequest(
+                    Request.Method.GET,
+                    googlePlacesUrl.toString(),
+                    null,
+                    new Response.Listener<JSONObject>() {
+                        @Override
+                        public void onResponse(JSONObject response) {
+                            //Toast.makeText(DetectFacesActivity.this, response.toString(), Toast.LENGTH_LONG).show();
+                            getRatingsPlace(response, placeId);
+                        }
+                    }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error) {
+                    Toast.makeText(PrincipalActivity.this, "Error nearby: "+error.toString(), Toast.LENGTH_LONG).show();
+                }
+            });
+            queue.add(detailsRequest);
+        } catch(Exception e) {
+            Toast.makeText(PrincipalActivity.this, "Error en string NearbySearch", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    public void getRatingsPlace(JSONObject reviews, String placeId) {
         LinkedList reviewsRatings = new LinkedList();
         try {
-            for(int i = 0; i < reviews.length(); i++) {
-                JSONObject placeReview = reviews.getJSONObject(i);
-                reviewsRatings.addLast(placeReview.getJSONObject("aspects").getInt("rating"));
+            JSONObject jsonObject = reviews.getJSONObject("result");
+            JSONArray jsonArray = jsonObject.getJSONArray("reviews");
+            for(int i = 0; i < jsonArray.length(); i++) {
+                JSONObject reviewObject = jsonArray.getJSONObject(i);
+                try {
+                    reviewsRatings.addLast(reviewObject.getInt("rating"));
+                } catch(Exception e) {
+                    reviewsRatings.addLast(2.5);
+                }
             }
-            return reviewsRatings;
+            Place_Info actualPlace = (Place_Info)mapNearbyPlaces.get(placeId);
+            actualPlace.setRatingList(reviewsRatings);
+            mapNearbyPlaces.put(placeId, actualPlace);
+
+            for(int i = 0; i < listNearbyPlaces.size(); i++) {
+                actualPlace = (Place_Info)listNearbyPlaces.get(i);
+                if(actualPlace.getPlaceId().equals(placeId)) {
+                    actualPlace.setRatingList(reviewsRatings);
+
+                    listNearbyPlaces.remove(i);
+                    listNearbyPlaces.add(i,actualPlace);
+                    break;
+                }
+            }
+
+            detectFaces();
+
         } catch(Exception e) {
-            Toast.makeText(PrincipalActivity.this, "Error al obtener los reviews", Toast.LENGTH_LONG).show();
-            return null;
+            Toast.makeText(PrincipalActivity.this, "Error al obtener los reviews"+e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.e("Error reviews", e.toString());
         }
     }
 
@@ -398,10 +462,14 @@ public class PrincipalActivity extends AppCompatActivity {
         return resultados;
     }
 
-    public void detectFaces(View v) {
+    public void detectFaces() {
         try {
-            Intent intentFaces = new Intent(PrincipalActivity.this, DetectFacesActivity.class);
-            startActivity(intentFaces);
+            for(int i = 0; i < listNearbyPlaces.size(); i++) {
+                Place_Info actualPlace = (Place_Info)listNearbyPlaces.get(i);
+                Log.e("Lista nearby", actualPlace.toString());
+            }
+            //Intent intentFaces = new Intent(PrincipalActivity.this, DetectFacesActivity.class);
+            //startActivity(intentFaces);
         } catch (Exception e) {
             Toast.makeText(PrincipalActivity.this, e.getMessage(), Toast.LENGTH_LONG).show();
         }
