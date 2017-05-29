@@ -132,7 +132,9 @@ public class PrincipalActivity extends AppCompatActivity {
         };
 
         checkPermissions();
+    }
 
+    public void addPhoto(View v) {
         getPhotoData();
     }
 
@@ -213,7 +215,6 @@ public class PrincipalActivity extends AppCompatActivity {
                     new Response.Listener<JSONObject>() {
                         @Override
                         public void onResponse(JSONObject response) {
-                            //Toast.makeText(DetectFacesActivity.this, response.toString(), Toast.LENGTH_LONG).show();
                             parsePlaceId(response);
                         }
                     }, new Response.ErrorListener() {
@@ -422,6 +423,7 @@ public class PrincipalActivity extends AppCompatActivity {
 
     public void getRatingsPlace(JSONObject reviews, String placeId) {
         LinkedList reviewsRatings = new LinkedList();
+        Log.e("Ratings: ", "Cargando ratings...");
         try {
             JSONObject jsonObject = reviews.getJSONObject("result");
             JSONArray jsonArray = jsonObject.getJSONArray("reviews");
@@ -448,12 +450,11 @@ public class PrincipalActivity extends AppCompatActivity {
                 }
             }
 
-            detectFaces();
-
         } catch(Exception e) {
-            Toast.makeText(PrincipalActivity.this, "Error al obtener los reviews"+e.getMessage(), Toast.LENGTH_LONG).show();
+            //Toast.makeText(PrincipalActivity.this, "Error al obtener los reviews "+e.getMessage(), Toast.LENGTH_LONG).show();
             Log.e("Error reviews", e.toString());
         }
+        detectFaces();
     }
 
     public LinkedList checkHistory() {
@@ -463,13 +464,16 @@ public class PrincipalActivity extends AppCompatActivity {
     }
 
     public void detectFaces() {
+
         try {
             for(int i = 0; i < listNearbyPlaces.size(); i++) {
                 Place_Info actualPlace = (Place_Info)listNearbyPlaces.get(i);
                 Log.e("Lista nearby", actualPlace.toString());
             }
-            //Intent intentFaces = new Intent(PrincipalActivity.this, DetectFacesActivity.class);
-            //startActivity(intentFaces);
+            Intent intentFaces = new Intent(PrincipalActivity.this, ResultsActivity.class);
+            //intentFaces.putExtra("Nearby", (ArrayList<String>)listNearbyPlaces.toArray());
+            startActivity(intentFaces);
+            this.finish();
         } catch (Exception e) {
             Toast.makeText(PrincipalActivity.this, e.getMessage(), Toast.LENGTH_LONG).show();
         }

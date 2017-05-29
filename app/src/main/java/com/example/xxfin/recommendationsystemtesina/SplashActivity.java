@@ -24,13 +24,14 @@ public class SplashActivity extends AppCompatActivity {
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                if(user != null){
+                startActivity(new Intent(SplashActivity.this, PrincipalActivity.class));
+                /*if(user != null){
                     startActivity(new Intent(SplashActivity.this, PrincipalActivity.class));
                     finish();
                 }else{
                     startActivity(new Intent(SplashActivity.this, ActivityLogin.class));
                     finish();
-                }
+                }*/
             }
         },3000);
     }

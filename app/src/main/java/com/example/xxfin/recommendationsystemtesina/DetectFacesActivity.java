@@ -62,12 +62,21 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Random;
 import java.util.Scanner;
 
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 
 /*Firebase imports*/
+import com.google.api.services.vision.v1.Vision;
+import com.google.api.services.vision.v1.VisionRequest;
+import com.google.api.services.vision.v1.VisionRequestInitializer;
+import com.google.api.services.vision.v1.model.AnnotateImageRequest;
+import com.google.api.services.vision.v1.model.BatchAnnotateImagesRequest;
+import com.google.api.services.vision.v1.model.BatchAnnotateImagesResponse;
+import com.google.api.services.vision.v1.model.Feature;
+import com.google.api.services.vision.v1.model.Image;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.storage.FirebaseStorage;
@@ -157,39 +166,10 @@ public class DetectFacesActivity extends AppCompatActivity {
 
         this.photoPath = (TextView)findViewById(R.id.result);
 
-        fotoPrueba();
-    }
+        Intent intent = getIntent();
+        Uri image = (Uri)intent.getData();
 
-    public void fotoPrueba() {
-        Intent intentGaleria = new Intent(Intent.ACTION_PICK,
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI); // Se crea el intent para abrir la aplicación de galería
-        startActivityForResult(intentGaleria, GALLERY_REQUEST); // Inicia la aplicación de galeria
-    }
-
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        bytes = new ByteArrayOutputStream();
-
-        if (requestCode == GALLERY_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
-            try {
-                Uri selectedImage = data.getData();
-
-                /*Ruta de la imagen para usar como referencia para storage*/
-                this.rutaImagen = obtenerRutaRealUri(selectedImage);
-
-                /*Bitmap de la imagen seleccionada*/
-                InputStream imageStream = getContentResolver().openInputStream(selectedImage);
-                this.photo = BitmapFactory.decodeStream(imageStream);
-
-                /*Carga la foto al Storage de Firebase*/
-                //encodeBitmapAndSaveToFirebase(this.photo, this.rutaImagen);
-
-                /*Envia request a Google Vision*/
-                Toast.makeText(DetectFacesActivity.this, "Enviando request...", Toast.LENGTH_LONG).show();
-                new UploadFileTask().execute();
-            } catch(Exception e) {
-                Toast.makeText(this, "File not found", Toast.LENGTH_SHORT).show();
-            }
-        }
+        analizarDatosImagen(image);
     }
 
     private void processValue(String result) {
@@ -240,16 +220,7 @@ public class DetectFacesActivity extends AppCompatActivity {
 
     public void analizarDatosImagen(Uri imagen) {
         /*Enviar request para Google Vision, devuelve un JSON con información del análisis*/
-        //enviarRequestVision(imagen);
-
-        /*Obtener Place_Id del lugar usando coordenadas*/
-        //obtenerPlaceId();
-
-        /*Obtener información del lugar basado en el Place_Id y lo guarda en un objeto de Place_Info*/
-        //obtenerInformación(this.placeId);
-
-        /*Obtener información de los lugares similares al Place_Id*/
-        //obtenerResultadosSimilares(this.placeId);
+        enviarRequestVision(imagen);
 
         /*Correlación Pearson entre resultados de imagen vs resultados similares
         * == 1 => correlación positiva perfecta
@@ -257,15 +228,142 @@ public class DetectFacesActivity extends AppCompatActivity {
         * 0.1 < > 0.6 correlación positiva baja. No se toman en cuenta
         * < 0 correlación negativa. No se toman en cuenta
         * */
-        //correlacionPearson();
+        correlacionPearson();
 
-        /*Intent intentResult = new Intent(DetectFacesActivity.this, ResultsActivity.class);
+        Intent intentResult = new Intent(DetectFacesActivity.this, ResultsActivity.class);
         intentResult.putExtra("Correlaciones", this.correlationsFound);
         intentResult.putExtra("Nearby", this.listNearbyPlaces);
         LinkedList placeInfoList = new LinkedList();
         placeInfoList.add(this.placeInfo);
         intentResult.putExtra("Place", placeInfoList);
-        startActivity(intentResult);*/
+        startActivity(intentResult);
+    }
+
+    public void enviarRequestVision(Uri imagen) {
+        try {
+            if (imagen != null) {
+                Bitmap bitmap = scaleBitmapDown(MediaStore.Images.Media.getBitmap(getContentResolver(), imagen), 1200);
+                callCloudVision(bitmap);
+            } else {
+                Log.d("Detection Face", "Imagen seleccionada nula");
+                Toast.makeText(DetectFacesActivity.this, "Error al seleccionar imágen", Toast.LENGTH_LONG).show();
+            }
+        } catch(Exception e) {
+            Toast.makeText(DetectFacesActivity.this, "Error al recuperar emociones", Toast.LENGTH_SHORT).show();
+            Log.e("Detection Face", e.getMessage());
+        }
+    }
+
+    private void callCloudVision(final Bitmap bitmap) throws IOException {
+        // Switch text to loading
+        Log.e("Detect Faces", "Cargando imagen...");
+        //mImageDetails.setText(R.string.loading_message);
+
+        // Do the real work in an async task, because we need to use the network anyway
+        new AsyncTask<Object, Void, String>() {
+            @Override
+            protected String doInBackground(Object... params) {
+                try {
+                    HttpTransport httpTransport = AndroidHttp.newCompatibleTransport();
+                    JsonFactory jsonFactory = GsonFactory.getDefaultInstance();
+
+                    VisionRequestInitializer requestInitializer =
+                            new VisionRequestInitializer(CLOUD_VISION_API_KEY) {
+                                /**
+                                 * We override this so we can inject important identifying fields into the HTTP
+                                 * headers. This enables use of a restricted cloud platform API key.
+                                 */
+                                @Override
+                                protected void initializeVisionRequest(VisionRequest<?> visionRequest)
+                                        throws IOException {
+                                    super.initializeVisionRequest(visionRequest);
+
+                                    String packageName = getPackageName();
+                                    visionRequest.getRequestHeaders().set("", packageName);
+
+                                    String sig = PackageManagerUtils.getSignature(getPackageManager(), packageName);
+
+                                    visionRequest.getRequestHeaders().set("", sig);
+                                }
+                            };
+
+                    Vision.Builder builder = new Vision.Builder(httpTransport, jsonFactory, null);
+                    builder.setVisionRequestInitializer(requestInitializer);
+
+                    Vision vision = builder.build();
+
+                    BatchAnnotateImagesRequest batchAnnotateImagesRequest = new BatchAnnotateImagesRequest();
+                    batchAnnotateImagesRequest.setRequests(new ArrayList<AnnotateImageRequest>() {{
+                        AnnotateImageRequest annotateImageRequest = new AnnotateImageRequest();
+
+                        // Add the image
+                        Image base64EncodedImage = new Image();
+                        // Convert the bitmap to a JPEG
+                        // Just in case it's a format that Android understands but Cloud Vision
+                        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, byteArrayOutputStream);
+                        byte[] imageBytes = byteArrayOutputStream.toByteArray();
+
+                        // Base64 encode the JPEG
+                        base64EncodedImage.encodeContent(imageBytes);
+                        annotateImageRequest.setImage(base64EncodedImage);
+
+                        // add the features we want
+                        annotateImageRequest.setFeatures(new ArrayList<Feature>() {{
+                            Feature faceDetection = new Feature();
+                            faceDetection.setType("FACE_DETECTION");
+                            add(faceDetection);
+                        }});
+
+                        // Add the list of one thing to the request
+                        add(annotateImageRequest);
+                    }});
+
+                    Vision.Images.Annotate annotateRequest =
+                            vision.images().annotate(batchAnnotateImagesRequest);
+                    // Due to a bug: requests to Vision API containing large images fail when GZipped.
+                    annotateRequest.setDisableGZipContent(true);
+                    Log.d("Detect FAces", "created Cloud Vision request object, sending request");
+
+                    BatchAnnotateImagesResponse response = annotateRequest.execute();
+                    //return convertResponseToString(response);
+                    return response.toString();
+
+                } catch (GoogleJsonResponseException e) {
+                    Log.d("Detect FAces", "failed to make API request because " + e.getContent());
+                } catch (IOException e) {
+                    Log.d("Detect FAces", "failed to make API request because of other IOException " +
+                            e.getMessage());
+                }
+                return "Cloud Vision API request failed. Check logs for details.";
+            }
+
+            protected void onPostExecute(String result) {
+                //mImageDetails.setText(result);
+                Toast.makeText(DetectFacesActivity.this, result.toString(), Toast.LENGTH_LONG).show();
+                Log.e("Detect Faces", result.toString());
+            }
+        }.execute();
+    }
+
+
+    public Bitmap scaleBitmapDown(Bitmap bitmap, int maxDimension) {
+        int originalWidth = bitmap.getWidth();
+        int originalHeight = bitmap.getHeight();
+        int resizedWidth = maxDimension;
+        int resizedHeight = maxDimension;
+
+        if (originalHeight > originalWidth) {
+            resizedHeight = maxDimension;
+            resizedWidth = (int) (resizedHeight * (float) originalWidth / (float) originalHeight);
+        } else if (originalWidth > originalHeight) {
+            resizedWidth = maxDimension;
+            resizedHeight = (int) (resizedWidth * (float) originalHeight / (float) originalWidth);
+        } else if (originalHeight == originalWidth) {
+            resizedHeight = maxDimension;
+            resizedWidth = maxDimension;
+        }
+        return Bitmap.createScaledBitmap(bitmap, resizedWidth, resizedHeight, false);
     }
 
     private  Bitmap resize(Bitmap image, int maxWidth, int maxHeight) {
@@ -294,43 +392,83 @@ public class DetectFacesActivity extends AppCompatActivity {
         }
     }
 
-    public String obtenerRutaRealUri(Uri imagenSeleccionada){
+    public void correlacionPearson() {
+        double emotionsAverage = 0, nearbyAverage = 0;
         try {
-            String[] informacion_imagen = {MediaStore.Images.Media.DATA}; // Obtener la metadata de todas las imagenes guardadas en el dispositivo
-            Cursor cursor = getContentResolver().query(imagenSeleccionada, informacion_imagen, null, null, null); // Buscar la imagen que coincide con el Uri dado
-            int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);  // Buscar la columna de url de imagen
-            cursor.moveToFirst(); // Ir al primer elemento
-            return cursor.getString(column_index); // Regresar ruta real
-        } catch (Exception e) {
-            return imagenSeleccionada.getPath(); // Regresar ruta decodificada
-        }
-    }
-
-    public boolean tieneCoordenadasImagen(String rutaImagen){
-        try {
-            float[] coordenadas = new float[2]; // Variable para guardar las coordenadas de la imagen
-            ExifInterface exifInterface = new ExifInterface(rutaImagen); // Crear objeto para leer metadata de imagen
-            if(exifInterface.getLatLong(coordenadas)) {
-                this.latitud = (double) coordenadas[0];
-                this.longitud = (double) coordenadas[1];
-                Toast.makeText(DetectFacesActivity.this, "Coordenadas encontradas", Toast.LENGTH_LONG).show();
-                return true;
+            for (int i = 0; i < this.listEmotions.size(); i++) {
+                Place_Info actualPlace = (Place_Info) this.listEmotions.get(i);
+                emotionsAverage += actualPlace.getRating();
             }
-        } catch (IOException e) {
-            Toast.makeText(DetectFacesActivity.this, e.toString(), Toast.LENGTH_LONG).show();
-        }
+            emotionsAverage = emotionsAverage / this.listEmotions.size();
 
-        return false;
+            /*x = emotionRating - median(emotionRating)*/
+            double xmedianX[] = new double[this.listEmotions.size()];
+            for(int i = 0; i < xmedianX.length; i++) {
+                Place_Info emotionInfo = (Place_Info) this.listEmotions.get(i);
+                xmedianX[i] = emotionInfo.getRating() - emotionsAverage;
+            }
+            /*x^2*/
+            double powX = 0;
+            for(int i = 0; i < xmedianX.length; i++) {
+                powX += xmedianX[i] * xmedianX[i];
+            }
+
+            for(int j = 0; j < listNearbyPlaces.size(); j++) {
+                Place_Info actualNearbyPlace = (Place_Info) listNearbyPlaces.get(j);
+                LinkedList placesRating = actualNearbyPlace.getRatingList();
+                String actualPlaceId = actualNearbyPlace.getPlaceId();
+
+                int nearbyCount = 0;
+                HashMap visitados = new HashMap();
+                double usedNearbyPlaces[] = new double[this.listEmotions.size()];
+                Random rand = new Random(System.currentTimeMillis());
+
+                int Low = 0, High = placesRating.size();
+                while (nearbyCount < listEmotions.size()) {
+                    int actualRand = rand.nextInt(High - Low) + Low;
+                    if (visitados.get(actualRand) == null) {
+                        visitados.put(rand, placesRating.get(actualRand));
+                        nearbyAverage += (int)placesRating.get(actualRand);
+                        nearbyCount++;
+                    }
+                }
+                nearbyAverage = nearbyAverage / this.listEmotions.size();
+
+                /*y = nearbyRating - mean(nearbyRating)*/
+                double ymedianY[] = new double[this.listEmotions.size()];
+                for(int i = 0; i < ymedianY.length; i++) {
+                    ymedianY[i] = usedNearbyPlaces[i] - nearbyAverage;
+                }
+
+                 /*y^2*/
+                double powY = 0;
+                for(int i = 0; i < ymedianY.length; i++) {
+                    powY += ymedianY[i] * ymedianY[i];
+                }
+
+                /*xy*/
+                double xySum = 0;
+                for(int i = 0; i < xmedianX.length; i++) {
+                    xySum += xmedianX[i] - ymedianY[i];
+                }
+                double correlacion = xySum / Math.sqrt((powX) * (powY));
+                if(correlacion > 0.8) {
+                    this.correlationsFound.put(this.placeId, actualPlaceId);
+                }
+            }
+            Toast.makeText(DetectFacesActivity.this, "Correlación: " + this.correlacionPearson, Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(DetectFacesActivity.this, "Error al calcular Pearson", Toast.LENGTH_LONG).show();
+        }
     }
 
 
     private class UploadFileTask extends AsyncTask<LinkedList, Integer, String> {
         protected String doInBackground(LinkedList... values) {
             try {
-                //StorageReference downloadUrl;
-                //LinkedList auxValues = (LinkedList) values[0];
-                //downloadUrl = (StorageReference) auxValues.get(0);
-                //StorageReference downloadURL = "gs://recommendationsystem-ba351.appspot.com/images/20170418_135602.jpg";
+                StorageReference downloadUrl;
+                LinkedList auxValues = (LinkedList) values[0];
+                downloadUrl = (StorageReference) auxValues.get(0);
 
                 URL serverUrl = new URL(TARGET_URL + API_KEY_VISION);
                 URLConnection urlConnection = serverUrl.openConnection();
@@ -365,7 +503,6 @@ public class DetectFacesActivity extends AppCompatActivity {
                 while (httpResponseScanner.hasNext()) {
                     String line = httpResponseScanner.nextLine();
                     resp += line;
-                    //System.out.println(line);  //  alternatively, print the line of response
                 }
                 httpResponseScanner.close();
 
